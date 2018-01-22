@@ -9,6 +9,8 @@ import pickle, gzip
 import random
 import numpy
 
+import time
+
 class Yahoo_Answers_Dataset(object):
     
     '''
@@ -75,6 +77,8 @@ class Yahoo_Answers_Dataset(object):
             print ("valid# / (valid# + train#) = %f" % valid_ratio)
         
         # load test-set
+        if self.__debug:
+            s = time.time()
         self.__test = {"seq": None, "label": None}
         f = gzip.open(test_path, "rb")
         d = pickle.load(f)
@@ -82,10 +86,14 @@ class Yahoo_Answers_Dataset(object):
         self.__test["label"] = d["label"]
         f.close()
         if self.__debug:
+            e = time.time()
             print ("Test-set loaded!")
             print ("\tTest# = %d" % len(self.__test["label"]))
+            print ("\tTime cost = %.3f sec" % (e-s))
 
         # load & split train/valid-set
+        if self.__debug:
+            s = time.time()
         self.__train = {"seq": None, "label": None}
         self.__valid = {"seq": None, "label": None}
         f = gzip.open(train_path, "rb")
@@ -97,9 +105,11 @@ class Yahoo_Answers_Dataset(object):
         self.__train["label"] = d["label"][split_idx:]
         f.close()
         if self.__debug:
+            e = time.time()
             print ("Train-set (along with valid-set) loaded!")
             print ("\tTrain# = %d" % len(self.__train["label"]))
             print ("\tValid# = %d" % len(self.__valid["label"]))
+            print ("\tTime cost = %.3f sec" % (e-s))
         
         # load label dictionary
         self.__label_dictionary = {}
@@ -110,6 +120,8 @@ class Yahoo_Answers_Dataset(object):
 
         # load vocabulary dictionary
         # dict key is a word, and dict value is the index of the one-hot vector
+        if self.__debug:
+            s = time.time()
         self.__dictionary = {}
         f = gzip.open(dict_path, "rb")
         d = pickle.load(f)
@@ -117,16 +129,27 @@ class Yahoo_Answers_Dataset(object):
             self.__dictionary[d[idx][0]] = idx
         f.close()
         if self.__debug:
+            e = time.time()
             print ("Word token dictionary loaded!")
+            print ("\tTime cost = %.3f sec" % (e-s))
         # generate reverse vocabulary dictionary
         # dict key is an index, and dict value is the word
+        if self.__debug:
+            s = time.time()
         self.__rev_dictionary = {v:k for k,v in self.__dictionary.items()}
         if self.__debug:
+            e = time.time()
             print ("Reverse word token dictionary generated!")
+            print ("\tTime cost = %.3f sec" % (e-s))
         
         # generate an epoch randomly
-        self.__av = random.sample(range(len(self.__train["label"])), len(self.__train["label"]))
-        print ("Epoch generated!")
+        if self.__debug:
+            s = time.time()
+        self.__av = random.sample(range(len(self.__train["label"])),
+                                  len(self.__train["label"]))
+        if self.__debug:
+            print ("Epoch generated!")
+            print ("\tTime cost = %.3f sec" % (e-s))
         
     def minibatch(self, batch_size):
         
@@ -144,14 +167,17 @@ class Yahoo_Answers_Dataset(object):
         Returns:
             
             A list of [sequences, labels, lengths]
-            Sequences: a numpy.3darray with the shape of
-                (bs, max_len, dict_size+1). Each slice is a sequence, and each
-                slice in a sequence is a token.
+            Sequences: a numpy.2darray with the shape of (bs, max_len). Each
+                slice is a sequence, each element in a sequence is the index
+                the token locate in the dictionary.
             Labels: a numpy.1darray with the shape of (bs). Each slice is an
                 integer as the label index.
             Lengths: a numpy.1darray with the shape of (bs). Each slice is an
                 integer as the length of the sequence.
         '''
+        
+        if self.__debug:
+            s = time.time()
         
         # check if the batch size is larger than the size of the train-set
         if batch_size > len(self.__train["label"]):
@@ -160,7 +186,8 @@ class Yahoo_Answers_Dataset(object):
                 print ("Batch size larger than train#!")
         # check if a new epoch is needed
         if batch_size > len(self.__av):
-            self.__av = random.sample(range(len(self.__train["label"])), len(self.__train["label"]))
+            self.__av = random.sample(range(len(self.__train["label"])),
+                                      len(self.__train["label"]))
             if self.__debug:
                 print ("New epoch generated!")
             
@@ -175,15 +202,21 @@ class Yahoo_Answers_Dataset(object):
             # get label
             batch[1].append(self.__train["label"][idx]-1)   # 1-index to 0-index
             # get sequence
-            tmp_seq = [[0 for j in range(self.__dict_size+1)] for i in range(self.__max_len)]
+            tmp_seq = [0 for i in range(self.__max_len)]
             for seq_idx in range(len(self.__train["seq"][idx])):
-                tmp_seq[seq_idx][self.__dictionary.get(self.__train["seq"][idx][seq_idx],
-                                                       self.__dict_size)] = 1
+                tmp_seq[seq_idx] = self.__dictionary.get(self.__train["seq"][idx][seq_idx],
+                                                         self.__dict_size)
             batch[0].append(tmp_seq)
         
         batch[0] = numpy.asarray(batch[0], dtype=numpy.int32)
         batch[1] = numpy.asarray(batch[1], dtype=numpy.float32)
         batch[2] = numpy.asarray(batch[2], dtype=numpy.int32)
+        
+        if self.__debug:
+            e = time.time()
+            print ("Minibatch generated!!")
+            print ("\tBatch size = %d" % batch_size)
+            print ("\tTime cost = %.3f sec" % (e-s))
         
         return batch
         
@@ -204,8 +237,11 @@ class Yahoo_Answers_Dataset(object):
         Returns:
             
             Same as minibatch method. (It's driving me crazy to write these
-            coments... So I'll try my best to write as less as possible.)
+            comments... So I'll try my best to write as less as possible.)
         '''
+        
+        if self.__debug:
+            s = time.time()
         
         # check if the batch size is larger than the size of the test-set
         if batch_size > len(self.__test["label"]):
@@ -222,15 +258,21 @@ class Yahoo_Answers_Dataset(object):
             # get label
             batch[1].append(self.__test["label"][idx]-1)   # 1-index to 0-index
             # get sequence
-            tmp_seq = [[0 for j in range(self.__dict_size+1)] for i in range(self.__max_len)]
+            tmp_seq = [0 for i in range(self.__max_len)]
             for seq_idx in range(len(self.__test["seq"][idx])):
-                tmp_seq[seq_idx][self.__dictionary.get(self.__test["seq"][idx][seq_idx],
-                                                       self.__dict_size)] = 1
+                tmp_seq[seq_idx] = self.__dictionary.get(self.__test["seq"][idx][seq_idx],
+                                                         self.__dict_size)
             batch[0].append(tmp_seq)
         
         batch[0] = numpy.asarray(batch[0], dtype=numpy.int32)
         batch[1] = numpy.asarray(batch[1], dtype=numpy.float32)
         batch[2] = numpy.asarray(batch[2], dtype=numpy.int32)
+        
+        if self.__debug:
+            e = time.time()
+            print ("Test batch generated!!")
+            print ("\tBatch size = %d" % batch_size)
+            print ("\tTime cost = %.3f sec" % (e-s))
         
         return batch
         
@@ -250,6 +292,9 @@ class Yahoo_Answers_Dataset(object):
             Same as test batch method.
         '''
         
+        if self.__debug:
+            s = time.time()
+        
         # check if the batch size is larger than the size of the valid-set
         if batch_size > len(self.__valid["label"]):
             batch_size = len(self.__valid["label"])
@@ -265,15 +310,21 @@ class Yahoo_Answers_Dataset(object):
             # get label
             batch[1].append(self.__valid["label"][idx]-1)   # 1-index to 0-index
             # get sequence
-            tmp_seq = [[0 for j in range(self.__dict_size+1)] for i in range(self.__max_len)]
+            tmp_seq = [0 for i in range(self.__max_len)]
             for seq_idx in range(len(self.__valid["seq"][idx])):
-                tmp_seq[seq_idx][self.__dictionary.get(self.__valid["seq"][idx][seq_idx],
-                                                       self.__dict_size)] = 1
+                tmp_seq[seq_idx] = self.__dictionary.get(self.__valid["seq"][idx][seq_idx],
+                                                         self.__dict_size)
             batch[0].append(tmp_seq)
         
         batch[0] = numpy.asarray(batch[0], dtype=numpy.int32)
         batch[1] = numpy.asarray(batch[1], dtype=numpy.float32)
         batch[2] = numpy.asarray(batch[2], dtype=numpy.int32)
+        
+        if self.__debug:
+            e = time.time()
+            print ("Valid batch generated!!")
+            print ("\tBatch size = %d" % batch_size)
+            print ("\tTime cost = %.3f sec" % (e-s))
         
         return batch
 
@@ -292,7 +343,7 @@ class Yahoo_Answers_Dataset(object):
             
             batch: a batch generated by minibatch/test_batch/valid_batch
                 method. It's a list of
-                [sequence 3darray, label 1darray, length 1darray].
+                [sequence 2darray, label 1darray, length 1darray].
                 
         Returns:
             
@@ -305,15 +356,13 @@ class Yahoo_Answers_Dataset(object):
         
         raw = [[], []]
 
-        for s in batch[0]:
+        for s in range(len(batch[0])):
             # recover question string
             tmp_seq = ""
-            for token in s:
-                # check if it's padding
-                if numpy.sum(token) == 0:
-                    break   # if so, break
+            for token in range(batch[2][s]):
                 # look up the embedding in reverse dictionary
-                tmp_seq += self.__rev_dictionary.get(numpy.argmax(token), "__UNKNOWN__") + " "
+                tmp_seq += self.__rev_dictionary.get(batch[0][s][token],
+                                                     "__UNKNOWN__") + " "
             raw[0].append(tmp_seq)
             
         for l in batch[1]:
@@ -345,7 +394,7 @@ class Yahoo_Answers_Dataset(object):
         
         return self.__dictionary.get(token, "UNKNOWN")
         
-    def check_rev_dict(self, em):
+    def check_rev_dict(self, em_idx):
         
         '''
         Check reverse dictionary method
@@ -364,7 +413,7 @@ class Yahoo_Answers_Dataset(object):
                 "UNKNOWN" if it's not.
         '''
         
-        return self.__rev_dictionary.get(em, "UNKNOWN")
+        return self.__rev_dictionary.get(em_idx, "UNKNOWN")
         
     def check_label_dict(self, label):
         
@@ -455,8 +504,6 @@ if __name__ == "__main__":
     
     ya = Yahoo_Answers_Dataset(debug=True)
     
-    #b_te = ya.test_batch(100)
-    #print ("test batch")
-    #b_va = ya.valid_batch(100)
-    #print ("valid batch")
     b_tr = ya.minibatch(32)
+    b_te = ya.test_batch(5000)
+    b_va = ya.valid_batch(1000)
